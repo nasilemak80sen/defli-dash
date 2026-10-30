@@ -10,12 +10,14 @@ venv/
 data/raw/*
 !data/raw/.gitkeep
 data/processed/
+.staging-*/
 exports/
 data/raw/*.csv
 data/processed/*.csv
 exports/*.csv
 *.xlsx
 *.xls
+*.parquet
 
 # Streamlit
 .streamlit/secrets.toml
