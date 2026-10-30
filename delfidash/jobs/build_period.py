@@ -146,7 +146,7 @@ def build_period(source: str | Path, *, period: str | None = None,
     policy = load_policy(policy_path)
     tolerance = float(policy["reconciliation"]["numeric_tolerance_hours"])
 
-    def _policy_policy_append_control(*args, **kwargs):
+    def _policy_append_control(*args, **kwargs):
         return _append_control(*args, tolerance=tolerance, **kwargs)
 
     rules = load_conversion_rules(rules_path)
