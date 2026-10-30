@@ -15,3 +15,15 @@ def test_parquet_file_hash_is_checked_before_reading(approved_build_inputs):
     mart_file.write_bytes(mart_file.read_bytes() + b"tampered")
     with pytest.raises(PublishedMartNotFound, match="SHA-256 mismatch"):
         load_published_period(inputs["output"], "2026-01")
+
+
+
+def test_reconciliation_artifact_hash_is_checked(approved_build_inputs):
+    inputs = approved_build_inputs
+    from jobs.build_period import build_period
+    manifest_path = build_period(inputs["source"], policy_path=inputs["policy"],
+                                 rules_path=inputs["rules"], output_root=inputs["output"])
+    reconciliation_file = manifest_path.parent / "reconciliation.csv"
+    reconciliation_file.write_text("tampered,reconciliation\n", encoding="utf-8")
+    with pytest.raises(PublishedMartNotFound, match="reconciliation SHA-256"):
+        load_published_period(inputs["output"], "2026-01")
