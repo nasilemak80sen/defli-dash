@@ -59,7 +59,7 @@ def _period_filter(frame: pd.DataFrame, period: str) -> pd.DataFrame:
 
 
 def _append_control(rows: list[dict[str, Any]], check: str, scope: str,
-                    expected: float | None, actual: float | None, *, tolerance: float = 0.1,
+                    expected: float | None, actual: float | None, *, tolerance: float,
                     status_override: str | None = None, detail: str = "") -> None:
     difference = None if expected is None or actual is None else float(actual) - float(expected)
     if status_override:
@@ -134,8 +134,7 @@ def _quarantine(output_root: Path, period: str, build_id: str,
 def build_period(source: str | Path, *, period: str | None = None,
                  policy_path: str | Path = ROOT / "config" / "policy.yaml",
                  rules_path: str | Path = ROOT / "config" / "unit_conversion.csv",
-                 output_root: str | Path = ROOT / "data" / "processed",
-                 tolerance: float = 0.1) -> Path:
+                 output_root: str | Path = ROOT / "data" / "processed") -> Path:
     """Validate, reconcile and publish a single month-end snapshot.
 
     The source workbook is treated as immutable input. A snapshot-level allocation
@@ -145,6 +144,11 @@ def build_period(source: str | Path, *, period: str | None = None,
     source_path = Path(source).resolve()
     output = Path(output_root).resolve()
     policy = load_policy(policy_path)
+    tolerance = float(policy["reconciliation"]["numeric_tolerance_hours"])
+
+    def _policy_policy_append_control(*args, **kwargs):
+        return _append_control(*args, tolerance=tolerance, **kwargs)
+
     rules = load_conversion_rules(rules_path)
     data = load_workbook(source_path)
 
@@ -177,11 +181,11 @@ def build_period(source: str | Path, *, period: str | None = None,
     # A conversion match is necessary but not approval. A rule needs a named
     # owner, role, approval date and evidence reference before publication.
     if conversion_audit.empty:
-        _append_control(rows, "Unit conversion audit availability", "All pools", None, None,
+        _policy_append_control(rows, "Unit conversion audit availability", "All pools", None, None,
                         status_override="NOT AVAILABLE", detail="No usage rows were available for conversion audit.")
     else:
         all_match = bool(conversion_audit["Matches Source"].all())
-        _append_control(
+        _policy_append_control(
             rows, "Calculated conversion vs workbook normalised hours", "Enterprise + Searah",
             int(len(conversion_audit)), int(conversion_audit["Matches Source"].sum()),
             status_override="PASS" if all_match else "FAIL",
@@ -200,7 +204,7 @@ def build_period(source: str | Path, *, period: str | None = None,
             and rule.approval_date and rule.approval_evidence
             for rule in used_rules
         )
-        _append_control(
+        _policy_append_control(
             rows, "Unit conversion owner approval", "Used conversion rules",
             len(used_rules), sum(1 for rule in used_rules if rule.status == "approved"
                                  and rule.approved_by and rule.approval_role
@@ -214,7 +218,7 @@ def build_period(source: str | Path, *, period: str | None = None,
         policy_approved = True
     except PolicyError:
         policy_approved = False
-    _append_control(
+    _policy_append_control(
         rows, "Policy approval", policy["policy_version"], 1,
         1 if policy_approved else 0,
         status_override="PASS" if policy_approved else "BLOCKED",
@@ -329,12 +333,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--policy", default=str(ROOT / "config" / "policy.yaml"))
     parser.add_argument("--rules", default=str(ROOT / "config" / "unit_conversion.csv"))
     parser.add_argument("--output", default=str(ROOT / "data" / "processed"))
-    parser.add_argument("--tolerance", type=float, default=0.1)
     args = parser.parse_args(argv)
     try:
         manifest = build_period(
             args.source, period=args.period, policy_path=args.policy, rules_path=args.rules,
-            output_root=args.output, tolerance=args.tolerance,
+            output_root=args.output,
         )
     except BuildBlockedError as exc:
         print(f"BUILD BLOCKED: {exc}", file=sys.stderr)
