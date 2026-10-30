@@ -28,7 +28,7 @@ from src.analytics import (  # noqa: E402
 )
 from src.data_loader import load_workbook  # noqa: E402
 from src.marts import file_sha256, publish_marts  # noqa: E402
-from src.policy import load_policy, pool_quota_for_period  # noqa: E402
+from src.policy import PolicyError, load_policy, pool_quota_for_period, require_policy_approved  # noqa: E402
 from src.reconciliation import build_reconciliation_report, require_reconciliation_passed  # noqa: E402
 from src.units import compare_to_source_normalised, load_conversion_rules  # noqa: E402
 
@@ -209,10 +209,11 @@ def build_period(source: str | Path, *, period: str | None = None,
             detail="All used factors need recorded source-owner approval, role, date and evidence.",
         )
 
-    policy_approved = policy.get("status") == "approved" and all(
-        str(policy.get("approval", {}).get(key, "")).strip()
-        for key in ("approved_by", "approved_role", "approved_at", "approval_reference")
-    )
+    try:
+        require_policy_approved(policy)
+        policy_approved = True
+    except PolicyError:
+        policy_approved = False
     _append_control(
         rows, "Policy approval", policy["policy_version"], 1,
         1 if policy_approved else 0,
