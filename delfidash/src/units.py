@@ -142,7 +142,7 @@ def convert_simulation_hours(frame: pd.DataFrame, rules: Iterable[UnitConversion
 
 
 def compare_to_source_normalised(frame: pd.DataFrame, rules: Iterable[UnitConversionRule],
-                                 tolerance: float = 0.1) -> pd.DataFrame:
+                                 *, tolerance: float) -> pd.DataFrame:
     """Diagnostic comparison only; proposed factors can be tested but not published."""
     if "Hours per User" not in frame.columns:
         raise UnitConversionError("Source-normalised comparison requires 'Hours per User'.")
