@@ -100,7 +100,7 @@ def _canonical_department(value: Any) -> str:
 def reconcile_allocations(allocation: pd.DataFrame, enterprise_usage: pd.DataFrame,
                           expected_enterprise_quota: float,
                           expected_enterprise_consumption: float | None = None,
-                          tolerance: float = 0.1) -> pd.DataFrame:
+                          *, tolerance: float) -> pd.DataFrame:
     """Reconcile source allocation pivots to Enterprise fact rows and arithmetic.
 
     The comparison uses the source 'Consumed (Hrs)' column, not adjusted final
