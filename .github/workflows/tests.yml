@@ -1,0 +1,45 @@
+name: Python data integrity checks
+
+on:
+  push:
+    branches: [main, 'fix/**', 'feature/**']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12']
+
+    defaults:
+      run:
+        working-directory: delfidash
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: delfidash/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Compile application and tests
+        run: python -m compileall -q app.py dash_app.py src tests
+
+      - name: Run tests
+        run: pyton -m pytest -q

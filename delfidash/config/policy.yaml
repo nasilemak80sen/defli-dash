@@ -1,0 +1,41 @@
+# Baseline entitlements from the 2026 source proposal.
+# Status is deliberately proposed until the package owner validates the source contract.
+schema_version: 1
+policy_version: 2026-proposed-1
+status: proposed
+source_reference: "Delfi PTS Utilization Accountability Dashboard Architecture Proposal, 30 Oct 2026"
+period: 2026
+pools:
+  enterprise:
+    quota_hours: 211200
+    unit: normalized_hours
+    effective_from: "2026-01-01"
+  searah:
+    quota_hours: 15000
+    unit: normalized_hours
+    effective_from: "2026-07-01"
+    effective_to: "2026-12-31"
+alerts:
+  department_utilization:
+    amber_percent: 80
+    red_percent: 100
+  enterprise_projected_year_end:
+    amber_percent: 95
+    red_percent: 100
+  user_spike:
+    monthly_share_of_enterprise_average_percent: 10
+    own_trailing_median_multiple: 5
+    minimum_hours: 500
+  session_hygien:
+    long_session_hours: 12
+    requires_session_telemetry: true
+  concurrency_pressure:
+    cap_profiles: 220
+    threshold_percent: 90
+    sustained_minutes: 30
+    requires_session_telemetry: true
+  storage:
+    amber_percent: 90
+    red_percent: 100
+    forecast_breach_months: 3
+    source_data_status: unavailable_structured_export

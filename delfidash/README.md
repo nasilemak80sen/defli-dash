@@ -1,40 +1,31 @@
 # DELFI Utilisation Intelligence
 
-A Python prototype that turns the September 2026 DELFI consolidated report into an interactive utilisation-awareness dashboard.
+A Python prototype for understanding DELFI simulation, profile, VM and storage utilisation. Streamlit is the primary application; Dash remains an optional companion for callback-driven exploration.
 
-## Recommended architecture
+## Architecture and data boundaries
 
-- **Streamlit is the primary application shell**: navigation, file upload, filters, KPI cards, explanatory messages and data-quality disclosures.
-- **Plotly is the charting layer**: interactive charts work directly inside Streamlit and Dash.
-- **Dash is an optional companion app**: included for callback-heavy analytical experiences that may later need more complex cross-filtering. Streamlit and Dash are separate web frameworks; they are not merged into one framework. Run Dash as a separate service/process when needed.
-- **Pandas is the data layer**: workbook ingestion, normalisation, aggregation and validation are kept outside the UI.
+- **Streamlit** is the primary application shell and presentation layer.
+- **Dash** is a separate optional process. It shares the Python analytics layer; it is not merged with Streamlit.
+- **Pandas / OpenPyXL** handle workbook ingestion and analysis.
+- **Domain modules** contain unit conversion, aggregation and reconciliation logic outside UI callbacks.
+- **Enterprise and Searah are separate pools.** Never add dedicated Searah usage to Enterprise entitlement or reconciliation totals.
+- **Simulation reporting** uses the workbook's `Hours per User` normalised field until the platform owner formally approves conversion factors. Proposed factors are recorded in `config/unit_conversion.csv`; they are not approved billing rules.
+- VM duration is not simulation hours. Profile activity is not purchased licence inventory. Storage must not be estimated from the image-only worksheet.
 
-For the first proof of concept, use Streamlit as the single entry point. Do not operate two frameworks just for the sake of it. Keep the Dash companion only if a specific interaction genuinely benefits from Dash.
+## Data integrity controls
 
-## Features in this prototype
+`src/data_loader.py` validates the required Enterprise usage worksheet and required fact columns, resolves known trailing-whitespace sheet-name variants, validates numeric usage values and reporting-month labels, distinguishes missing optional sheets from unreadable sheets, and records a SHA-256 source-file hash. Invalid usage rows raise a contextual error rather than being silently converted to an empty frame or zero hours.
 
-1. Executive Overview: consumption story, monthly simulation, departmental split, VM activity and top users.
-2. Simulation Hours: department filter, monthly trend, departmental and user-level consumption, allocation/balance table.
-3. VM Activity: daily active users, duration, department and user breakdown.
-4. Access & Rejections: provisional rejected-session counts by department and user, without unreliable time trends.
-5. Profiles & Access: observed profile events, unique users and profile mix.
-6. Storage & Capacity: explicit data-readiness page with the fields needed to activate storage analytics.
-7. Data Quality & Notes: dataset coverage and limitations made visible.
+The monthly pivot worksheets use a documented layout contract in `PIVOT_LAYOUT`. These formatted pivots still require the source workbook to retain that layout; a changed row/column shape fails explicitly. The raw simulation facts remain the preferred source for usage calculations.
 
-## Important source-data limitations
+`src/units.py` loads effective-dated conversion rules. Rules marked `proposed` are blocked by default. An explicit override is available only for diagnostic sensitivity comparisons and must not be used to publish ledgers until approvals are recorded.
 
-The supplied workbook has some gaps. This prototype does **not** invent values for missing data.
-
-- `Storage` contains section headings but no readable tabular storage values in the supplied file. Storage analytics are not populated yet.
-- `2026 Package Info` and `Domain Profiles` are empty.
-- Profile activity appears limited to a narrow date range in this extract. Confirm whether it is a snapshot.
-- The rejected-session detail sheet has a date/header alignment issue. Counts should be treated as provisional until source columns are reconciled.
-- Simulation aggregation uses `Hours per User`, not raw `Hours`, because the raw data contains different CPU-hour units. Confirm the normalisation convention with the DELFI platform owner.
+`src/analytics.py` aggregates one pool at a time, retains valid months not in the original Jan–Sep extract, and provides allocation reconciliation checks. `src/reconciliation.py` exposes a publish gate for failed or unavailable reconciliation.
 
 ## Local setup (Windows PowerShell)
 
 ```powershell
-cd path\to\delfi_utilisation_intelligence
+cd path\to\defli-dash\delfidash
 py -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
@@ -46,65 +37,33 @@ Open the local URL shown by Streamlit, normally `http://localhost:8501`.
 
 ## Optional Dash companion
 
-In a second PowerShell terminal:
+With the same environment active, place the source workbook at `data/raw/DelfiPTS_Sep2026_Profile_Storage_SimHrs_ConsolidatedReport_forStudy.xlsx` and run:
 
 ```powershell
-cd path\to\delfi_utilisation_intelligence
-.\.venv\Scripts\Activate.ps1
 python dash_app.py
 ```
 
-Open `http://127.0.0.1:8050`.
+Open `http://127.0.0.1:8050`. Dash loads the workbook only when the app is constructed, uses the same validated loader and presents Enterprise and Searah as separate chart series.
 
-If a future Streamlit page needs to embed the running Dash app, use:
+## Tests
 
-```python
-import streamlit.components.v1 as components
-components.iframe("http://127.0.0.1:8050", height=900, scrolling=True)
+From the `delfidash` directory:
+
+```powershell
+python -m compileall -q app.py dash_app.py src tests
+python -m pytest -q
 ```
 
-This requires both processes to be running. For deployment, host Dash behind an approved reverse proxy/service and embed its trusted URL. Do not assume localhost embedding will work for remote users.
+The tests use synthetic data and do not require the confidential September workbook. GitHub Actions runs compilation and tests on Python 3.11 and 3.12 for pushes to development branches and pull requests to `main`.
 
-## Data refresh
+## Source-data confidentiality
 
-- Replace the local workbook at `data/raw/DelfiPTS_Sep2026_Profile_Storage_SimHrs_ConsolidatedReport_forStudy.xlsx`, or upload a new `.xlsx` from the sidebar.
-- The current parser expects the sheet names in the supplied workbook. If the reporting team changes sheet names or column definitions, update `src/data_loader.py`.
-- Check the Data Quality & Notes page after every refresh.
+Do not publish the source workbook, employee email addresses, user-level extracts or identifiable utilisation records in this public repository. Keep `data/raw/` excluded from Git. Use synthetic records for public screenshots and continuous integration, and follow PETRONAS data-handling requirements.
 
-## GitHub and confidentiality
+## Known items requiring source-owner confirmation
 
-**Do not publish the supplied workbook, user-level extracts, corporate email addresses, or identifiable utilisation records in a public repository.**
-
-The workbook is included in this local ZIP so the prototype can run immediately, but it is excluded from Git by `.gitignore`. Before pushing:
-1. Keep the repository private if it contains any company-specific logic or metadata.
-2. Confirm PETRONAS data-handling and GitHub policies.
-3. Do not force-add `data/raw/*.xlsx`.
-4. Prefer a synthetic/anonymised demo dataset for public screenshots and CI.
-
-## Project structure
-
-```text
-delfi_utilisation_intelligence/
-├── app.py
-├── dash_app.py
-├── requirements.txt
-├── README.md
-├── .gitignore
-├── data/
-│   └── raw/
-│       └── [local source workbook; gitignored]
-├── src/
-│   ├── __init__.py
-│   ├── data_loader.py
-│   └── analytics.py
-└── tests/
-```
-
-## Roadmap
-
-- Reconcile storage data source and add storage concentration / growth analysis.
-- Confirm the meaning and conversion of each simulation unit.
-- Validate allocation and adjustment rules against the package owner.
-- Repair rejected-session date mapping and build concurrency indicators.
-- Add tests for monthly totals, user aggregation, data-quality checks and workbook schema drift.
-- Add role-based views and approved deployment/authentication only after the proof of concept is accepted.
+- Conversion factors, especially `realization.hour` (divide by two), `vCPU.hour` (multiply by two) and the zero factor for `CPU.hour`, remain proposed pending written approval.
+- Allocation pivot offsets are isolated and validated in `PIVOT_LAYOUT` because the current Excel pivot uses formatted/merged headings. A changed workbook layout blocks parsing and must be reconciled before reporting.
+- Session-level concurrency requires SLB session start/end telemetry. Daily unique users are not concurrency.
+- Storage reporting requires a structured storage export; screenshot-derived estimates are not treated as precise facts.
+- Allocation adjustments and remaining balances must be reconciled before any chargeback or contractual conclusions.

@@ -11,9 +11,11 @@ data/raw/*
 !data/raw/.gitkeep
 data/processed/
 exports/
+data/raw/*.csv
+data/processed/*.csv
+exports/*.csv
 *.xlsx
 *.xls
-*.csv
 
 # Streamlit
 .streamlit/secrets.toml

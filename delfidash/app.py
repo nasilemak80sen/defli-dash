@@ -107,10 +107,10 @@ if page=="Executive Overview":
         st.plotly_chart(fig,use_container_width=True)
     c3,c4=st.columns(2)
     with c3:
-        st.subheader("VM activity: duration by month")
+        st.subheader("VM activity: distinct users by month")
         if not vm_m.empty:
-            fig=px.line(vm_m,x="Month",y="Duration Hours",markers=True,color_discrete_sequence=["#315a9b"])
-            fig.update_layout(height=300,margin=dict(l=10,r=10,t=15,b=10),yaxis_title="Recorded duration hours",xaxis_title="")
+            fig=px.line(vm_m,x="Month",y="Active Users",markers=True,color_discrete_sequence=["#315a9b"])
+            fig.update_layout(height=300,margin=dict(l=10,r=10,t=15,b=10),yaxis_title="Distinct users",xaxis_title="")
             st.plotly_chart(fig,use_container_width=True)
         else: st.info("VM activity data not available.")
     with c4:
@@ -162,31 +162,31 @@ elif page=="Simulation Hours":
 
 elif page=="VM Activity":
     st.markdown("## VM activity")
-    st.caption("VM duration indicates recorded session duration, not simulation consumption or billable compute hours.")
+    st.caption("The workbook's duration field is not reliable and is excluded from this view. Daily unique users are an activity measure, not concurrent sessions.")
     if vm.empty:
         st.warning("No VM daily data was loaded.")
     else:
         dep=sorted(vm["Department_"].dropna().astype(str).unique()) if "Department_" in vm else []
         chosen=st.multiselect("Department",dep,default=dep)
         v=vm[vm["Department_"].astype(str).isin(chosen)] if chosen else vm
+        daily=v.groupby("Date").agg(**{"Active users":("User","nunique")}).reset_index()
         c1,c2,c3=st.columns(3)
         with c1: kpi("VM users",fmt(v["User"].nunique()),"Distinct users in selected scope")
-        with c2: kpi("Recorded duration",fmt(v["Sum of Duration Hours"].sum()),"Duration hours")
-        with c3: kpi("Activity records",fmt(len(v)),"Daily user records")
-        daily=v.groupby("Date").agg(**{"Active users":("User","nunique"),"Duration hours":("Sum of Duration Hours","sum")}).reset_index()
-        fig=go.Figure()
-        fig.add_trace(go.Scatter(x=daily["Date"],y=daily["Active users"],name="Active users",mode="lines"))
+        with c2: kpi("Activity records",fmt(len(v)),"User-day records")
+        with c3: kpi("Peak daily unique users",fmt(daily["Active users"].max() if not daily.empty else 0),"Not a concurrency measurement")
+        fig=px.line(daily,x="Date",y="Active users",markers=True,color_discrete_sequence=["#315a9b"])
         fig.update_layout(height=350,yaxis_title="Distinct users per day",xaxis_title="",margin=dict(l=10,r=10,t=20,b=10))
         st.plotly_chart(fig,use_container_width=True)
         c1,c2=st.columns(2)
         with c1:
-            fig=px.bar(dept_vm.head(12).sort_values("Duration Hours"),x="Duration Hours",y="Department",orientation="h",color_discrete_sequence=["#315a9b"])
-            fig.update_layout(height=360,yaxis_title="",xaxis_title="Duration hours")
+            by_department=department_vm(v)
+            fig=px.bar(by_department.head(12).sort_values("Active Users"),x="Active Users",y="Department",orientation="h",color_discrete_sequence=["#315a9b"])
+            fig.update_layout(height=360,yaxis_title="",xaxis_title="Distinct users")
             st.plotly_chart(fig,use_container_width=True)
         with c2:
-            top=v.groupby("User")["Sum of Duration Hours"].sum().sort_values(ascending=False).head(15).reset_index()
-            fig=px.bar(top.sort_values("Sum of Duration Hours"),x="Sum of Duration Hours",y="User",orientation="h",color_discrete_sequence=["#e0a52b"])
-            fig.update_layout(height=360,yaxis_title="",xaxis_title="Duration hours")
+            user_days=v.groupby("User")["Date"].nunique().sort_values(ascending=False).head(15).reset_index(name="Active days")
+            fig=px.bar(user_days.sort_values("Active days"),x="Active days",y="User",orientation="h",color_discrete_sequence=["#e0a52b"])
+            fig.update_layout(height=360,yaxis_title="",xaxis_title="Days with recorded activity")
             st.plotly_chart(fig,use_container_width=True)
         st.dataframe(daily.sort_values("Date",ascending=False),use_container_width=True,hide_index=True)
 

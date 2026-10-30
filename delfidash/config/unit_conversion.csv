@@ -1,0 +1,7 @@
+unit,numerator,denominator,effective_from,rule_version,status,source,approved_by,notes
+16CPU.hour,1,16,2026-01-01,2026-proposed-1,proposed,September 2026 workbook formula,,Owner confirmation required
+8CPU.hour,1,8,2026-01-01,2026-proposed-1,proposed,September 2026 workbook formula,,Owner confirmation required
+realization.hour,1,2,2026-01-01,2026-proposed-1,proposed,September 2026 workbook formula,,Material impact; owner confirmation required
+vCPU.hour,2,1,2026-01-01,2026-proposed-1,proposed,September 2026 workbook formula,,Unusual multiplier; owner confirmation required
+hour,1,1,2026-01-01,2026-proposed-1,proposed,September 2026 workbook formula,,Owner confirmation required
+CPU.hour,0,1,2026-01-01,2026-proposed-1,proposed,September 2026 workbook observation,,Source states all current CPU.hour rows are zero; non-zero rows must block
