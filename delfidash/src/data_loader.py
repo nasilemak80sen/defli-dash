@@ -304,7 +304,7 @@ def load_workbook(path: str | Path) -> dict[str, Any]:
         sim = _prepare_usage(sim_raw, sim_sheet)
         duplicate_enterprise_rows = int(sim.duplicated(keep=False).sum())
 
-        searah_sheet = _resolve_sheet(workbook.sheet_names, SHEET_ALIASES["searah"], required=False)
+        searah_sheet = _resolve_sheet(workbook.sheetnames, SHEET_ALIASES["searah"], required=False)
         if searah_sheet:
             searah = _prepare_usage(_read_sheet(workbook, searah_sheet), searah_sheet)
         else:
@@ -315,7 +315,7 @@ def load_workbook(path: str | Path) -> dict[str, Any]:
         if searah_sheet is None:
             missing_optional.append("searah")
         for key in ("vm", "profiles", "top", "rejected", "users"):
-            frame, sheet = _parse_optional_sheet(workbook, workbook.sheet_names, key)
+            frame, sheet = _parse_optional_sheet(workbook, workbook.sheetnames, key)
             loaded[key] = frame
             if sheet is None:
                 missing_optional.append(key)
@@ -368,7 +368,7 @@ def load_workbook(path: str | Path) -> dict[str, Any]:
             users["Email Address"] = _clean_text(users["Email Address"])
             users = users.dropna(subset=["Email Address"])
 
-        allocation_sheet = _resolve_sheet(workbook.sheet_names, SHEET_ALIASES["allocation_raw"], required=False)
+        allocation_sheet = _resolve_sheet(workbook.sheetnames, SHEET_ALIASES["allocation_raw"], required=False)
         if allocation_sheet:
             alloc_raw = _read_sheet(workbook, allocation_sheet, header=None)
             user_monthly, allocation, enterprise = _parse_monthly_pivot(alloc_raw)
@@ -377,7 +377,7 @@ def load_workbook(path: str | Path) -> dict[str, Any]:
             missing_optional.append("allocation_raw")
 
         searah_allocation_sheet = _resolve_sheet(
-            workbook.sheet_names, SHEET_ALIASES["searah_allocation_raw"], required=False
+            workbook.sheetnames, SHEET_ALIASES["searah_allocation_raw"], required=False
         )
         if searah_allocation_sheet:
             searah_raw = _read_sheet(workbook, searah_allocation_sheet, header=None)
@@ -403,7 +403,7 @@ def load_workbook(path: str | Path) -> dict[str, Any]:
             "missing_optional_sheets": sorted(set(missing_optional)),
             "duplicate_enterprise_rows": duplicate_enterprise_rows,
             "duplicate_searah_rows": int(searah.duplicated(keep=False).sum()) if not searah.empty else 0,
-            "sheet_names": list(workbook.sheet_names),
+            "sheet_names": list(workbook.sheetnames),
         }
     finally:
         workbook.close()
