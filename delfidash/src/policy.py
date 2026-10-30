@@ -13,6 +13,10 @@ class PolicyError(ValueError):
     """Invalid, incomplete or unapproved policy configuration."""
 
 
+def _has_text(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
 def load_policy(path: str | Path) -> dict[str, Any]:
     source = Path(path)
     if not source.is_file():
@@ -67,7 +71,7 @@ def load_policy(path: str | Path) -> dict[str, Any]:
         raise PolicyError("Policy approval must be a mapping.")
     if raw["status"] == "approved":
         required = ("approved_by", "approved_role", "approved_at", "approval_reference")
-        missing = [key for key in required if not str(approval.get(key, "")).strip()]
+        missing = [key for key in required if not _has_text(approval.get(key))]
         if missing:
             raise PolicyError(f"Approved policy is missing approval evidence: {missing}.")
         try:
@@ -87,7 +91,7 @@ def require_policy_approved(policy: dict[str, Any]) -> None:
         )
     approval = policy.get("approval") or {}
     required = ("approved_by", "approved_role", "approved_at", "approval_reference")
-    missing = [key for key in required if not str(approval.get(key, "")).strip()]
+    missing = [key for key in required if not _has_text(approval.get(key))]
     if missing:
         raise PolicyError(f"Policy approval evidence is incomplete: {missing}.")
 
