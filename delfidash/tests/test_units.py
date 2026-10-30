@@ -82,3 +82,20 @@ def test_approved_rule_without_full_evidence_is_rejected(tmp_path):
     )
     with pytest.raises(UnitConversionError, match="requires approver, role, date and evidence"):
         load_conversion_rules(path)
+
+
+
+def test_latest_effective_rule_supersedes_older_proposed_rule():
+    old_proposed = UnitConversionRule(
+        "16CPU.hour", 1, 16, date(2025, 1, 1), "old-proposed-v1",
+        "proposed", "old source"
+    )
+    current_approved = UnitConversionRule(
+        "16CPU.hour", 1, 16, date(2026, 1, 1), "current-approved-v2",
+        "approved", "owner confirmation", "Owner", "",
+        date(2026, 1, 5), "CHG-2026-01", "Platform owner"
+    )
+    frame = pd.DataFrame({"Unit": ["16CPU.hour"], "Month": ["Apr'26"], "Hours": [160.0]})
+    result = convert_simulation_hours(frame, [old_proposed, current_approved])
+    assert result.loc[0, "Rule Version"] == "current-approved-v2"
+    assert result.loc[0, "Calculated Normalised Hours"] == 10.0
