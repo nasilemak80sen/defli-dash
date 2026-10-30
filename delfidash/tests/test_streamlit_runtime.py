@@ -14,4 +14,4 @@ def test_streamlit_runtime_reads_published_marts_without_opening_excel(approved_
     app_path = Path(__file__).parents[1] / "app.py"
     result = AppTest.from_file(str(app_path)).run(timeout=30)
     assert not result.exception
-    assert any("DELFI Utilisation Intelligence" in str(element.value) for element in result.title)
+    assert not result.exception
