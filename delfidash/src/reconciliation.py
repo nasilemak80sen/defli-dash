@@ -37,7 +37,7 @@ def build_reconciliation_report(data: dict[str, Any], policy: dict[str, Any], pe
     """
     tolerance = float(policy["reconciliation"]["numeric_tolerance_hours"])
 
-    def _add_add_control(*args, **kwargs):
+    def _add_control(*args, **kwargs):
         return _control(*args, tolerance=tolerance, **kwargs)
 
     enterprise_quota = pool_quota_for_period(policy, "enterprise", period)
