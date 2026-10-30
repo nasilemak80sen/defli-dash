@@ -199,7 +199,7 @@ def _prepare_usage(frame: pd.DataFrame, sheet: str) -> pd.DataFrame:
     return data.reset_index(drop=True)
 
 
-def _parse_optional_sheet(workbook: pd.ExcelFile, sheet_names: list[str], key: str,
+def _parse_optional_sheet(workbook: Any, sheet_names: list[str], key: str,
                           *, header: int | None = 0) -> tuple[pd.DataFrame, str | None]:
     sheet = _resolve_sheet(sheet_names, SHEET_ALIASES[key], required=False)
     if sheet is None:
