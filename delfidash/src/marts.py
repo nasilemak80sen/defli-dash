@@ -60,8 +60,29 @@ def publish_marts(data: dict[str, Any], output_root: str | Path, period: str,
         manifest_path = destination / "manifest.json"
         if manifest_path.is_file():
             existing = json.loads(manifest_path.read_text(encoding="utf-8"))
-            if existing.get("build_id") == build_id and existing.get("publication_status") == "published":
-                return manifest_path
+            valid = existing.get("build_id") == build_id and existing.get("publication_status") == "published"
+            valid = valid and existing.get("period") == period
+            if valid:
+                for key, descriptor in existing.get("datasets", {}).items():
+                    target = (destination / descriptor["file"]).resolve()
+                    if key not in DATASET_FILES or not target.is_relative_to(destination.resolve()):
+                        valid = False
+                        break
+                    if not target.is_file() or file_sha256(target) != descriptor.get("sha256"):
+                        valid = False
+                        break
+                metadata_path = destination / "metadata.json"
+                valid = valid and metadata_path.is_file() and file_sha256(metadata_path) == existing.get("metadata_sha256")
+                reconciliation_path = destination / "reconciliation.csv"
+                expected_reconciliation_hash = existing.get("reconciliation_sha256")
+                if expected_reconciliation_hash:
+                    valid = valid and reconciliation_path.is_file()
+                    valid = valid and file_sha256(reconciliation_path) == expected_reconciliation_hash
+                if valid:
+                    latest_tmp = period_root / f".latest-{uuid.uuid4().hex}.tmp"
+                    latest_tmp.write_text(json.dumps({"build_id": build_id}, indent=2), encoding="utf-8")
+                    os.replace(latest_tmp, period_root / "latest.json")
+                    return manifest_path
         raise RuntimeError(f"Build destination already exists but is not a valid published build: {destination}")
 
     period_root.mkdir(parents=True, exist_ok=True)
@@ -175,5 +196,14 @@ def load_published_period(output_root: str | Path, period: str | None = None) ->
         result[key] = frame
     result.update(metadata)
     result["build_metadata"] = manifest
-    result["reconciliation"] = pd.read_csv(build_dir / "reconciliation.csv") if (build_dir / "reconciliation.csv").exists() else pd.DataFrame()
+    reconciliation_path = build_dir / "reconciliation.csv"
+    expected_reconciliation_hash = manifest.get("reconciliation_sha256")
+    if expected_reconciliation_hash:
+        if not reconciliation_path.is_file() or file_sha256(reconciliation_path) != expected_reconciliation_hash:
+            raise PublishedMartNotFound("Published reconciliation SHA-256 does not match the manifest.")
+        result["reconciliation"] = pd.read_csv(reconciliation_path)
+    elif reconciliation_path.is_file():
+        raise PublishedMartNotFound("Reconciliation exists but is not covered by the manifest integrity hash.")
+    else:
+        raise PublishedMartNotFound("Published manifest does not include reconciliation evidence.")
     return result
