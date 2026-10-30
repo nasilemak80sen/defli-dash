@@ -14,7 +14,7 @@ class ReconciliationBlocked(RuntimeError):
 
 
 def _control(check: str, scope: str, expected: float | None, actual: float | None,
-             *, tolerance: float = 0.1, unavailable_reason: str | None = None) -> dict[str, Any]:
+             *, tolerance: float, unavailable_reason: str | None = None) -> dict[str, Any]:
     if expected is None or actual is None:
         status = "NOT AVAILABLE"
         difference = None
@@ -35,6 +35,11 @@ def build_reconciliation_report(data: dict[str, Any], policy: dict[str, Any], pe
     silently treated as ordinary usage: the workbook's free-text transfer notes
     are not an approved structured adjustment ledger.
     """
+    tolerance = float(policy["reconciliation"]["numeric_tolerance_hours"])
+
+    def _add_add_control(*args, **kwargs):
+        return _control(*args, tolerance=tolerance, **kwargs)
+
     enterprise_quota = pool_quota_for_period(policy, "enterprise", period)
     searah_quota = pool_quota_for_period(policy, "searah", period)
     if enterprise_quota is None:
@@ -53,17 +58,18 @@ def build_reconciliation_report(data: dict[str, Any], policy: dict[str, Any], pe
         enterprise,
         expected_enterprise_quota=enterprise_quota,
         expected_enterprise_consumption=data.get("enterprise", {}).get("Consumed (Hrs)"),
+        tolerance=tolerance,
     )
     rows = report.to_dict("records")
 
     enterprise_summary = data.get("enterprise", {})
-    rows.append(_control(
+    rows.append(_add_control(
         "Enterprise summary quota vs policy", "Enterprise", enterprise_quota,
         enterprise_summary.get("Quota (Hrs)"),
         unavailable_reason="Enterprise summary row was not parsed." if enterprise_summary.get("Quota (Hrs)") is None else None,
     ).copy())
     if enterprise_summary.get("Consumed (Hrs)") is None:
-        rows.append(_control(
+        rows.append(_add_control(
             "Enterprise summary consumption", "Enterprise", None, None,
             unavailable_reason="Enterprise summary consumed total was not parsed.",
         ))
@@ -71,7 +77,7 @@ def build_reconciliation_report(data: dict[str, Any], policy: dict[str, Any], pe
     # Reconcile each monthly user pivot total to the raw Enterprise facts.
     user_monthly = data.get("user_monthly", pd.DataFrame())
     if user_monthly.empty:
-        rows.append(_control(
+        rows.append(_add_control(
             "Monthly user pivot tie-out", period, None, None,
             unavailable_reason="Monthly user pivot is unavailable.",
         ))
@@ -88,12 +94,12 @@ def build_reconciliation_report(data: dict[str, Any], policy: dict[str, Any], pe
                 continue
             pivot_total = pd.to_numeric(user_monthly[month], errors="coerce").sum(min_count=1)
             fact_total = fact_monthly.get(month)
-            rows.append(_control("Monthly user pivot tie-out", month,
+            rows.append(_add_control("Monthly user pivot tie-out", month,
                                  float(pivot_total) if pd.notna(pivot_total) else None,
                                  float(fact_total) if fact_total is not None else None))
             months_checked += 1
         if months_checked == 0:
-            rows.append(_control(
+            rows.append(_add_control(
                 "Monthly user pivot tie-out", period, None, None,
                 unavailable_reason="No monthly pivot months were available for the selected period.",
             ))
@@ -118,7 +124,7 @@ def build_reconciliation_report(data: dict[str, Any], policy: dict[str, Any], pe
     else:
         summary = data.get("searah_summary", {})
         if searah.empty:
-            rows.append(_control(
+            rows.append(_add_control(
                 "Searah source fact availability", "Searah", 0.0, None,
                 unavailable_reason="Searah is effective in this period but its source fact sheet is missing.",
             ))
@@ -126,12 +132,12 @@ def build_reconciliation_report(data: dict[str, Any], policy: dict[str, Any], pe
             raw_searah_total = float(pd.to_numeric(searah["Hours per User"], errors="raise").sum())
             searah_summary_total = summary.get("Consumed (Hrs)")
             if searah_summary_total is None:
-                rows.append(_control(
+                rows.append(_add_control(
                     "Searah summary tie-out", "Searah", None, raw_searah_total,
                     unavailable_reason="Searah summary total was not parsed.",
                 ))
-            elif abs(float(searah_summary_total) - raw_searah_total) <= 0.1:
-                rows.append(_control("Searah summary tie-out", "Searah",
+            elif abs(float(searah_summary_total) - raw_searah_total) <= tolerance:
+                rows.append(_add_control("Searah summary tie-out", "Searah",
                                      float(searah_summary_total), raw_searah_total))
             else:
                 rows.append({
@@ -141,7 +147,7 @@ def build_reconciliation_report(data: dict[str, Any], policy: dict[str, Any], pe
                     "Status": "NOT AVAILABLE",
                     "Detail": "The summary may include transfers from Enterprise. The workbook records these in free text, not a structured, approved adjustment ledger; do not force a tie-out.",
                 })
-            rows.append(_control(
+            rows.append(_add_control(
                 "Searah summary quota vs policy", "Searah", searah_quota,
                 summary.get("Quota (Hrs)"),
                 unavailable_reason="Searah summary quota was not parsed." if summary.get("Quota (Hrs)") is None else None,
