@@ -23,7 +23,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.analytics import (  # noqa: E402
-    department_simulation, monthly_simulation, pool_summary, user_simulation,
+    department_simulation, department_vm, monthly_simulation, pool_summary,
+    profile_summary, user_simulation, vm_monthly,
 )
 from src.data_loader import load_workbook  # noqa: E402
 from src.marts import file_sha256, publish_marts  # noqa: E402
@@ -250,6 +251,25 @@ def build_period(source: str | Path, *, period: str | None = None,
     data["searah_monthly"] = monthly_simulation(data["searah"])
     data["user_ledger"] = user_simulation(data["sim"])
     data["department_usage"] = department_simulation(data["sim"])
+    if not data["sim"].empty:
+        department_col = "Updated Department" if "Updated Department" in data["sim"].columns else "Department"
+        data["department_monthly"] = (
+            data["sim"].groupby([department_col, "Month"], dropna=False)["Hours per User"]
+            .sum().reset_index().rename(columns={department_col: "Department", "Hours per User": "Hours"})
+        )
+    else:
+        data["department_monthly"] = pd.DataFrame(columns=["Department", "Month", "Hours"])
+    data["vm_monthly"] = vm_monthly(data["vm"])
+    data["vm_department"] = department_vm(data["vm"])
+    data["profile_summary"] = profile_summary(data["profiles"])
+    if not data["rejected"].empty and {"Department_", "count"}.issubset(data["rejected"].columns):
+        data["rejection_summary"] = (
+            data["rejected"].groupby("Department_", dropna=False)["count"].sum()
+            .reset_index(name="Rejected records").rename(columns={"Department_": "Department"})
+            .sort_values("Rejected records", ascending=False).reset_index(drop=True)
+        )
+    else:
+        data["rejection_summary"] = pd.DataFrame(columns=["Department", "Rejected records"])
 
     department_ledger = data["allocation"].copy()
     department_ledger["Utilisation (%)"] = (
