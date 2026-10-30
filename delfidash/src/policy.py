@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import date
 from hashlib import sha256
+import math
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +37,14 @@ def load_policy(path: str | Path) -> dict[str, Any]:
     year = raw.get("period")
     if not isinstance(year, int) or not 2000 <= year <= 2100:
         raise PolicyError("Policy period must be a four-digit reporting year.")
+
+    reconciliation = raw.get("reconciliation")
+    if not isinstance(reconciliation, dict):
+        raise PolicyError("Policy requires a reconciliation mapping.")
+    tolerance = reconciliation.get("numeric_tolerance_hours")
+    if (not isinstance(tolerance, (int, float)) or isinstance(tolerance, bool)
+            or not math.isfinite(float(tolerance)) or float(tolerance) < 0):
+        raise PolicyError("Policy reconciliation.numeric_tolerance_hours must be a finite non-negative number.")
 
     pools = raw.get("pools")
     if not isinstance(pools, dict) or "enterprise" not in pools or "searah" not in pools:
