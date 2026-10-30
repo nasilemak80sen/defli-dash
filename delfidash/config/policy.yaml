@@ -1,10 +1,14 @@
-# Baseline entitlements from the 2026 source proposal.
-# Status is deliberately proposed until the package owner validates the source contract.
+# Proposal baseline. Do not mark approved without a recorded package-owner attestation.
 schema_version: 1
 policy_version: 2026-proposed-1
 status: proposed
 source_reference: "Delfi PTS Utilization Accountability Dashboard Architecture Proposal, 30 Oct 2026"
 period: 2026
+approval:
+  approved_by:
+  approved_role:
+  approved_at:
+  approval_reference:
 pools:
   enterprise:
     quota_hours: 211200
