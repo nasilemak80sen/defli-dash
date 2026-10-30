@@ -30,7 +30,8 @@ DATASET_FILES = {
     "monthly": "enterprise_monthly.parquet",
     "searah_monthly": "searah_monthly.parquet",
     "user_ledger": "user_ledger.parquet",
-    "department_ledger": "department_ledger_derived.parquet",
+    "department_usage": "department_usage.parquet",
+    "conversion_audit": "conversion_audit_summary.parquet",
     "pool_ledger": "pool_ledger.parquet",
 }
 
