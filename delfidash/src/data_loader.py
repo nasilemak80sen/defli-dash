@@ -11,6 +11,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from openpyxl import load_workbook as load_xlsx_workbook
 
 MONTHS = ["Jan'26", "Feb'26", "Mar'26", "Apr'26", "May'26", "Jun'26", "Jul'26", "Aug'26", "Sep'26"]
 USAGE_REQUIRED_COLUMNS = (
@@ -78,9 +79,35 @@ def _resolve_sheet(sheet_names: list[str], aliases: tuple[str, ...], *, required
     return matches[0]
 
 
-def _read_sheet(workbook: pd.ExcelFile, sheet: str, **kwargs: Any) -> pd.DataFrame:
+def _read_sheet(workbook: Any, sheet: str, *, header: int | None = 0) -> pd.DataFrame:
+    """Read a worksheet without deprecated ExcelFile.parse calls.
+
+    Values are read from the cached workbook results, matching pandas/openpyxl's
+    data_only behaviour. Blank trailing rows are discarded; the source cells are
+    never changed.
+    """
     try:
-        return workbook.parse(sheet_name=sheet, **kwargs)
+        worksheet = workbook[sheet]
+        rows = [list(row) for row in worksheet.iter_rows(values_only=True)]
+        if header is None:
+            return pd.DataFrame(rows)
+        if not rows or header >= len(rows):
+            return pd.DataFrame()
+        headers = rows[header]
+        width = len(headers)
+        names = []
+        seen: dict[str, int] = {}
+        for index, value in enumerate(headers):
+            name = str(value).strip() if value is not None and str(value).strip() else f"Unnamed: {index}"
+            count = seen.get(name, 0)
+            seen[name] = count + 1
+            names.append(name if count == 0 else f"{name}.{count}")
+        records = []
+        for row in rows[header + 1:]:
+            values = (row + [None] * width)[:width]
+            if any(value is not None for value in values):
+                records.append(values)
+        return pd.DataFrame(records, columns=names)
     except Exception as exc:  # preserve context; do not turn corrupt sheets into empty frames
         raise WorkbookLoadError(f"Failed reading worksheet {sheet!r}: {exc}") from exc
 
@@ -267,12 +294,12 @@ def load_workbook(path: str | Path) -> dict[str, Any]:
     if not source.exists():
         raise FileNotFoundError(f"Workbook not found: {source}")
     try:
-        workbook = pd.ExcelFile(source, engine="openpyxl")
+        workbook = load_xlsx_workbook(source, read_only=True, data_only=True)
     except Exception as exc:
         raise WorkbookLoadError(f"Could not open Excel workbook {source.name!r}: {exc}") from exc
 
     try:
-        sim_sheet = _resolve_sheet(workbook.sheet_names, SHEET_ALIASES["sim"], required=True)
+        sim_sheet = _resolve_sheet(workbook.sheetnames, SHEET_ALIASES["sim"], required=True)
         sim_raw = _read_sheet(workbook, sim_sheet)
         sim = _prepare_usage(sim_raw, sim_sheet)
         duplicate_enterprise_rows = int(sim.duplicated(keep=False).sum())
@@ -294,16 +321,17 @@ def load_workbook(path: str | Path) -> dict[str, Any]:
                 missing_optional.append(key)
 
         vm = loaded["vm"]
-        _require_columns(vm, ("Date", "User", "Department_", "Sum of Duration Hours"), "VM daily_data")
+        _require_columns(vm, ("Date", "User", "Department_"), "VM daily_data")
         if not vm.empty:
             if "Date" in vm.columns:
                 vm["Date"] = pd.to_datetime(vm["Date"], errors="coerce")
             for column in ("User", "Department", "Department_", "Billing Department"):
                 if column in vm:
                     vm[column] = _clean_text(vm[column])
-            for column in ("Sum of Duration Hours", "Active Unique Users"):
-                if column in vm:
-                    _coerce_numeric_strict(vm, column, "VM daily_data")
+            # F7 in the source proposal: duration values are unreliable. Do not
+            # coerce, aggregate or publish them until the source query is validated.
+            if "Active Unique Users" in vm:
+                _coerce_numeric_strict(vm, "Active Unique Users", "VM daily_data")
 
         profiles = loaded["profiles"]
         _require_columns(profiles, ("Date", "Profile", "User"), "Data_profiles")
@@ -323,8 +351,7 @@ def load_workbook(path: str | Path) -> dict[str, Any]:
             for column in ("User", "Department_", "Billing Department"):
                 if column in top:
                     top[column] = _clean_text(top[column])
-            if "Total Dur. Hours" in top:
-                _coerce_numeric_strict(top, "Total Dur. Hours", "top 220 data")
+            # Top-220 duration is explicitly excluded: it is not a reliable measure.
 
         rejected = loaded["rejected"]
         _require_columns(rejected, ("User", "Department_", "count"), "rejected users data")
