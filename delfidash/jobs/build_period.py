@@ -249,7 +249,7 @@ def build_period(source: str | Path, *, period: str | None = None,
     data["monthly"] = monthly_simulation(data["sim"])
     data["searah_monthly"] = monthly_simulation(data["searah"])
     data["user_ledger"] = user_simulation(data["sim"])
-    data["department_ledger"] = department_simulation(data["sim"])
+    data["department_usage"] = department_simulation(data["sim"])
 
     department_ledger = data["allocation"].copy()
     department_ledger["Utilisation (%)"] = (
@@ -264,7 +264,7 @@ def build_period(source: str | Path, *, period: str | None = None,
         else "AMBER" if pd.notna(value) and value >= amber
         else "WITHIN POLICY" if pd.notna(value) else "NO QUOTA"
     )
-    data["department_ledger_derived"] = department_ledger
+    data["department_ledger"] = department_ledger
 
     searah_quota = pool_quota_for_period(policy, "searah", selected_period)
     data["pool_ledger"] = pool_summary(
