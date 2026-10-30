@@ -55,3 +55,18 @@ def test_policy_rejects_invalid_effective_date(tmp_path):
     path.write_text(yaml.safe_dump(policy), encoding="utf-8")
     with pytest.raises(PolicyError, match="precedes"):
         load_policy(path)
+
+
+
+def test_policy_exposes_versioned_numeric_reconciliation_tolerance():
+    policy = load_policy(CONFIG)
+    assert policy["reconciliation"]["numeric_tolerance_hours"] == 0.1
+
+
+def test_policy_rejects_negative_reconciliation_tolerance(tmp_path):
+    policy = yaml.safe_load(CONFIG.read_text(encoding="utf-8"))
+    policy["reconciliation"]["numeric_tolerance_hours"] = -0.01
+    path = tmp_path / "policy-negative-tolerance.yaml"
+    path.write_text(yaml.safe_dump(policy), encoding="utf-8")
+    with pytest.raises(PolicyError, match="finite non-negative"):
+        load_policy(path)
