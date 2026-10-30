@@ -51,7 +51,7 @@ def test_zero_factor_rejects_nonzero_raw_value():
 
 def test_conversion_diagnostic_compares_with_workbook_normalised_hours():
     frame = pd.DataFrame({"Unit": ["16CPU.hour"], "Month": ["Jan'26"], "Hours": [160.0], "Hours per User": [10.0]})
-    result = compare_to_source_normalised(frame, [rule(status="proposed")])
+    result = compare_to_source_normalised(frame, [rule(status="proposed")], tolerance=0.1)
     assert bool(result.loc[0, "Matches Source"])
     assert result.loc[0, "Rule Status"] == "proposed"
 
