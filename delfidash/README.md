@@ -16,7 +16,7 @@ Dash has been removed from this prototype. Business rules remain in plain Python
 ## Data and reporting safeguards
 
 - Enterprise and Searah are separate pools. Searah has its own 15,000-hour allocation effective July–December 2026; it is never included in Enterprise totals.
-- The 2026 Enterprise quota and all threshold values are read from config/policy.yaml, not duplicated as reconciliation defaults.
+- The 2026 Enterprise and Searah quotas, alert thresholds and numeric reconciliation tolerance are read from config/policy.yaml, not duplicated as code defaults.
 - The policy is currently marked **proposed**. It cannot be published until the accountable owner records the approval metadata.
 - Conversion factors are in config/unit_conversion.csv. Every used factor must have status **approved**, approver, role, date and evidence reference before the build can publish.
 - Converted hours are compared row-by-row with the workbook's Hours per User column. A mismatch blocks publication.
