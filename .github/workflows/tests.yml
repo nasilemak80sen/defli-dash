@@ -42,4 +42,4 @@ jobs:
         run: python -m compileall -q app.py dash_app.py src tests
 
       - name: Run tests
-        run: pyton -m pytest -q
+        run: python -m pytest -q

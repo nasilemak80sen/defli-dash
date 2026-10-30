@@ -26,7 +26,7 @@ alerts:
     monthly_share_of_enterprise_average_percent: 10
     own_trailing_median_multiple: 5
     minimum_hours: 500
-  session_hygien:
+  session_hygiene:
     long_session_hours: 12
     requires_session_telemetry: true
   concurrency_pressure:
