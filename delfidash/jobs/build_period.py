@@ -187,8 +187,14 @@ def build_period(source: str | Path, *, period: str | None = None,
             status_override="PASS" if all_match else "FAIL",
             detail=f"Tolerance: {tolerance:g} normalised hours per source row.",
         )
-        used_units = set(conversion_audit["Unit"].astype(str).str.casefold())
-        used_rules = [rule for rule in rules if rule.unit.casefold() in used_units]
+        used_rule_pairs = {
+            (str(unit).casefold(), str(version))
+            for unit, version in zip(conversion_audit["Unit"], conversion_audit["Rule Version"])
+        }
+        used_rules = [
+            rule for rule in rules
+            if (rule.unit.casefold(), rule.rule_version) in used_rule_pairs
+        ]
         fully_approved = bool(used_rules) and all(
             rule.status == "approved" and rule.approved_by and rule.approval_role
             and rule.approval_date and rule.approval_evidence
@@ -306,7 +312,10 @@ def build_period(source: str | Path, *, period: str | None = None,
             "searah_normalised_hours": float(data["searah"]["Hours per User"].sum())
                 if not data["searah"].empty else 0.0,
             "reconciliation_status": "PASS",
-            "conversion_rule_versions": sorted(set(data["sim"].get("Rule Version", pd.Series(dtype=str)).dropna().astype(str))),
+            "conversion_rule_versions": sorted(set(
+                data["sim"].get("Rule Version", pd.Series(dtype=str)).dropna().astype(str).tolist()
+                + data["searah"].get("Rule Version", pd.Series(dtype=str)).dropna().astype(str).tolist()
+            )),
         },
     )
     return manifest_path
