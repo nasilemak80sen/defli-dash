@@ -13,6 +13,7 @@ def test_current_policy_remains_proposed_until_owner_signoff():
     assert policy["status"] == "proposed"
     assert policy["pools"]["enterprise"]["quota_hours"] == 211200
     assert policy["pools"]["searah"]["quota_hours"] == 15000
+    assert policy["reconciliation"]["numeric_tolerance_hours"] == 0.1
     with pytest.raises(PolicyError, match="source-owner-approved policy"):
         require_policy_approved(policy)
 
