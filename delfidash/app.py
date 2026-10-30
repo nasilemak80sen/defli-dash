@@ -1,273 +1,280 @@
+"""Streamlit-only DELFI dashboard. The UI reads verified Parquet marts, never Excel."""
+from __future__ import annotations
+
+import os
 from pathlib import Path
 import sys
+
 import pandas as pd
-import streamlit as st
 import plotly.express as px
-import plotly.graph_objects as go
+import streamlit as st
 
-ROOT=Path(__file__).parent
-sys.path.insert(0,str(ROOT))
-from src.data_loader import load_workbook
-from src.analytics import monthly_simulation, department_simulation, user_simulation, vm_monthly, profile_summary, department_vm, data_quality
+ROOT = Path(__file__).resolve().parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-st.set_page_config(page_title="DELFI Utilisation Intelligence",page_icon="◈",layout="wide",initial_sidebar_state="expanded")
+from src.analytics import data_quality  # noqa: E402
+from src.marts import PublishedMartNotFound, load_published_period  # noqa: E402
+
+st.set_page_config(
+    page_title="DELFI Utilisation Intelligence",
+    page_icon="◈",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
+
 st.markdown("""
 <style>
-:root{--ink:#14283f;--muted:#64748b;--teal:#00a6a6;--gold:#f4b942}
-.block-container{padding-top:1.5rem;padding-bottom:3rem;max-width:1500px}
-.hero{padding:1.35rem 1.5rem;border-radius:18px;background:linear-gradient(115deg,#102a43 0%,#174a63 60%,#087e8b 100%);color:white;margin-bottom:1.1rem}
-.hero h1{font-size:2rem;margin:0 0 .35rem 0;color:white}
+.block-container{padding-top:1.4rem;padding-bottom:2.8rem;max-width:1450px}
+.hero{padding:1.25rem 1.5rem;border-radius:16px;background:linear-gradient(115deg,#102a43 0%,#174a63 60%,#087e8b 100%);color:#fff;margin-bottom:1rem}
+.hero h1{font-size:1.9rem;margin:0 0 .35rem 0;color:#fff}
 .hero p{margin:0;color:#d9edf2}
-.kpi{background:#fff;border:1px solid #e4eaf0;border-radius:14px;padding:1rem 1.1rem;min-height:105px}
-.kpi .label{color:#64748b;font-size:.82rem}
-.kpi .value{font-size:1.65rem;font-weight:750;color:#14283f;line-height:1.4}
-.kpi .hint{color:#64748b;font-size:.75rem}
-.section-note{color:#64748b;font-size:.9rem}
+.note{color:#64748b;font-size:.88rem}
 </style>
-""",unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
-DEFAULT=ROOT/"data"/"raw"/"DelfiPTS_Sep2026_Profile_Storage_SimHrs_ConsolidatedReport_forStudy.xlsx"
-st.sidebar.title("DELFI Intelligence")
-st.sidebar.caption("Platform utilisation awareness")
-uploaded=st.sidebar.file_uploader("Upload updated Excel report",type=["xlsx"])
-path=None
-if uploaded:
-    temp=ROOT/"data"/"uploaded_report.xlsx"
-    temp.parent.mkdir(exist_ok=True)
-    temp.write_bytes(uploaded.getvalue())
-    path=temp
-elif DEFAULT.exists():
-    path=DEFAULT
-else:
-    st.warning("No source workbook found. Place the report in data/raw/ or upload it using the sidebar.")
-    st.stop()
+MART_ROOT = Path(os.environ.get("DELFI_MARTS_ROOT", ROOT / "data" / "processed"))
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def read_published_marts(root: str) -> dict:
+    return load_published_period(root)
+
 
 try:
-    data=load_workbook(path)
-except Exception as e:
-    st.error(f"Could not read workbook: {e}")
+    data = read_published_marts(str(MART_ROOT))
+except PublishedMartNotFound as exc:
+    st.title("DELFI Utilisation Intelligence")
+    st.error("No verified reporting period is currently published.")
+    st.write(str(exc))
+    st.markdown("Run the monthly build after the source workbook and approval gates are ready:")
+    st.code(
+        'python jobs/build_period.py --source "data/raw/DelfiPTS_Sep2026_Profile_Storage_SimHrs_ConsolidatedReport_forStudy.xlsx"',
+        language="powershell",
+    )
+    st.caption("The dashboard does not parse or upload Excel files. It reads only published, SHA-256-verified Parquet marts.")
     st.stop()
 
-sim=data["sim"]; searah=data["searah"]; vm=data["vm"]; profiles=data["profiles"]
-alloc=data["allocation"]; ent=data["enterprise"]
-months=monthly_simulation(sim)
-searah_months=monthly_simulation(searah)
-dept_sim=department_simulation(sim)
-user_sim=user_simulation(sim)
-vm_m=vm_monthly(vm)
-profile=profile_summary(profiles)
-dept_vm=department_vm(vm)
+build = data["build_metadata"]
+period = build["period"]
+enterprise = data.get("sim", pd.DataFrame())
+searah = data.get("searah", pd.DataFrame())
+monthly = data.get("monthly", pd.DataFrame())
+searah_monthly = data.get("searah_monthly", pd.DataFrame())
+department_usage = data.get("department_usage", pd.DataFrame())
+department_monthly = data.get("department_monthly", pd.DataFrame())
+department_ledger = data.get("department_ledger", pd.DataFrame())
+pool_ledger = data.get("pool_ledger", pd.DataFrame())
+vm_monthly = data.get("vm_monthly", pd.DataFrame())
+vm_department = data.get("vm_department", pd.DataFrame())
+profile_ledger = data.get("profile_summary", pd.DataFrame())
+rejection_summary = data.get("rejection_summary", pd.DataFrame())
+reconciliation = data.get("reconciliation", pd.DataFrame())
 
-st.markdown("""
-<div class="hero">
-  <h1>DELFI Utilisation Intelligence</h1>
-  <p>Make every hour, profile and platform resource visible. Understand usage, spot pressure early, and make better allocation decisions.</p>
-</div>
-""",unsafe_allow_html=True)
+st.sidebar.title("DELFI Intelligence")
+st.sidebar.caption("Published, reconciled period")
+st.sidebar.metric("Reporting period", period)
+st.sidebar.caption(f"Policy: {build.get('policy_version', 'Unknown')}")
+st.sidebar.caption(f"Source SHA-256: {str(build.get('source_sha256', ''))[:16]}…")
+st.sidebar.divider()
+page = st.sidebar.radio(
+    "Explore",
+    [
+        "Executive Overview",
+        "Simulation Hours",
+        "VM Activity",
+        "Access & Rejections",
+        "Profiles & Access",
+        "Storage & Capacity",
+        "Data Quality & Reconciliation",
+    ],
+)
+st.sidebar.divider()
+st.sidebar.caption("Streamlit reads prebuilt Parquet marts. Excel ingestion runs separately.")
 
-with st.sidebar:
-    st.divider()
-    page=st.radio("Explore",["Executive Overview","Simulation Hours","VM Activity","Access & Rejections","Profiles & Access","Storage & Capacity","Data Quality & Notes"])
-    st.divider()
-    st.caption("Reporting period: Jan–Sep 2026")
-    st.caption("Source: "+data["source_file"])
+st.markdown(
+    f'<div class="hero"><h1>DELFI Utilisation Intelligence</h1>'
+    f'<p>Resource consumption, allocation and data quality for {period}.</p></div>',
+    unsafe_allow_html=True,
+)
+st.caption(
+    f"Published build {build.get('build_id')} · Built at {build.get('built_at_utc')} · "
+    f"Source: {data.get('source_file', 'Unknown')}"
+)
 
-def kpi(label,value,hint=""):
-    st.markdown(f'<div class="kpi"><div class="label">{label}</div><div class="value">{value}</div><div class="hint">{hint}</div></div>',unsafe_allow_html=True)
 
-def fmt(v):
-    return f"{v:,.0f}" if pd.notna(v) else "—"
+def fmt(value, digits: int = 0) -> str:
+    try:
+        if pd.isna(value):
+            return "—"
+        return f"{float(value):,.{digits}f}"
+    except (TypeError, ValueError):
+        return "—"
 
-if page=="Executive Overview":
-    total_sim=float(months["Hours"].sum()) if not months.empty else 0
-    quota=ent.get("Quota (Hrs)")
-    balance=ent.get("Balance (Hrs)")
-    sim_users=int(sim["User"].nunique()) if not sim.empty else 0
-    searah_consumed=data.get("searah_summary",{}).get("Consumed (Hrs)")
-    cols=st.columns(4)
-    with cols[0]: kpi("Simulation hours",fmt(total_sim),"Normalised Hours per User")
-    with cols[1]: kpi("Enterprise quota",fmt(quota) if pd.notna(quota) else "Not parsed","Annual package quota")
-    with cols[2]: kpi("Simulation users",fmt(sim_users),"Distinct users in simulation detail")
-    with cols[3]: kpi("Searah dedicated hours",fmt(searah_consumed) if pd.notna(searah_consumed) else "Not parsed","Separate 15,000-hour allocation")
-    st.markdown("### The utilisation story")
-    st.markdown("This view is designed to answer three questions: **where are resources going, who is driving consumption, and where should we act?**")
-    c1,c2=st.columns([1.35,1])
-    with c1:
-        st.subheader("Simulation consumption by month")
-        fig=go.Figure()
-        fig.add_trace(go.Bar(x=months["Month"].astype(str),y=months["Hours"],name="Enterprise package",marker_color="#078b91"))
-        if not searah_months.empty:
-            fig.add_trace(go.Scatter(x=searah_months["Month"].astype(str),y=searah_months["Hours"],name="Searah dedicated",mode="lines+markers",line=dict(color="#e0a52b",width=3)))
-        fig.update_layout(height=340,margin=dict(l=10,r=10,t=20,b=10),yaxis_title="Normalised hours",xaxis_title="",legend=dict(orientation="h",y=1.12))
-        st.plotly_chart(fig,use_container_width=True)
-    with c2:
-        st.subheader("Simulation consumption by department")
-        fig=px.bar(dept_sim.head(8).sort_values("Hours"),x="Hours",y="Department",orientation="h",color_discrete_sequence=["#e0a52b"])
-        fig.update_layout(height=340,margin=dict(l=10,r=10,t=20,b=10),xaxis_title="Normalised hours",yaxis_title="")
-        st.plotly_chart(fig,use_container_width=True)
-    c3,c4=st.columns(2)
-    with c3:
-        st.subheader("VM activity: distinct users by month")
-        if not vm_m.empty:
-            fig=px.line(vm_m,x="Month",y="Active Users",markers=True,color_discrete_sequence=["#315a9b"])
-            fig.update_layout(height=300,margin=dict(l=10,r=10,t=15,b=10),yaxis_title="Distinct users",xaxis_title="")
-            st.plotly_chart(fig,use_container_width=True)
-        else: st.info("VM activity data not available.")
-    with c4:
-        st.subheader("Top simulation consumers")
-        fig=px.bar(user_sim.head(10).sort_values("Hours"),x="Hours",y="User",orientation="h",color_discrete_sequence=["#078b91"])
-        fig.update_layout(height=300,margin=dict(l=10,r=10,t=15,b=10),xaxis_title="Normalised hours",yaxis_title="")
-        st.plotly_chart(fig,use_container_width=True)
-    st.info("Interpretation guardrail: VM duration, simulation hours, profile events and storage are different measures. They must not be added together or described as one universal utilisation score.")
-    st.subheader("Management prompts")
-    st.markdown("- Which teams account for the largest share of simulation consumption?\n- Are allocations aligned with actual demand and business priorities?\n- Are high-consumption users aware of their usage pattern?\n- Are VM duration and rejected sessions signalling access or capacity friction?")
 
-elif page=="Simulation Hours":
-    st.markdown("## Simulation hours")
-    st.caption("Normalised consumption uses the workbook's **Hours per User** field. Raw Hours across different CPU-hour units should not be summed without a documented conversion.")
-    dept_opts=sorted(dept_sim["Department"].dropna().astype(str).unique()) if not dept_sim.empty else []
-    selected=st.multiselect("Department filter",dept_opts,default=dept_opts)
-    filt=sim[sim["Updated Department"].astype(str).isin(selected)] if not sim.empty else sim
-    c1,c2=st.columns(2)
-    with c1:
-        m=monthly_simulation(filt)
-        fig=px.area(m,x="Month",y="Hours",markers=True,color_discrete_sequence=["#078b91"])
-        fig.update_layout(height=360,yaxis_title="Normalised hours",xaxis_title="")
-        st.plotly_chart(fig,use_container_width=True)
-    with c2:
-        d=department_simulation(filt)
-        fig=px.bar(d.head(12).sort_values("Hours"),x="Hours",y="Department",orientation="h",color="Hours",color_continuous_scale="Teal")
-        fig.update_layout(height=360,yaxis_title="",xaxis_title="Normalised hours",coloraxis_showscale=False)
-        st.plotly_chart(fig,use_container_width=True)
-    if not searah.empty:
-        st.subheader("Searah dedicated allocation (reported separately)")
-        ss=data.get("searah_summary",{})
-        s1,s2=st.columns(2)
-        with s1: kpi("Searah quota",fmt(ss.get("Quota (Hrs)")),"Dedicated allocation")
-        with s2: kpi("Searah consumed",fmt(ss.get("Consumed (Hrs)")),"Do not combine with enterprise quota")
-        sm=monthly_simulation(searah)
-        fig=px.bar(sm,x="Month",y="Hours",color_discrete_sequence=["#e0a52b"])
-        fig.update_layout(height=260,yaxis_title="Normalised hours",xaxis_title="")
-        st.plotly_chart(fig,use_container_width=True)
-    st.subheader("Highest individual consumption")
-    u=user_simulation(filt)
-    st.dataframe(u.head(30),use_container_width=True,hide_index=True)
-    if not alloc.empty:
-        st.subheader("Allocation and balance")
-        a=alloc.copy()
-        if "Balance (Hrs)" in a:
-            a["Status"]=a["Balance (Hrs)"].apply(lambda x:"Over allocation" if pd.notna(x) and x<0 else "Within balance")
-        st.dataframe(a,use_container_width=True,hide_index=True)
-        st.caption("Allocation table is sourced from the formatted monthly simulation pivot. Validate adjustment rules with the package owner before treating balances as chargeable facts.")
+def pool_value(name: str, column: str):
+    if pool_ledger.empty or "Pool" not in pool_ledger.columns:
+        return None
+    values = pool_ledger.loc[pool_ledger["Pool"] == name, column]
+    return values.iloc[0] if not values.empty else None
 
-elif page=="VM Activity":
-    st.markdown("## VM activity")
-    st.caption("The workbook's duration field is not reliable and is excluded from this view. Daily unique users are an activity measure, not concurrent sessions.")
-    if vm.empty:
-        st.warning("No VM daily data was loaded.")
+
+def show_pool_kpis(name: str, columns):
+    row = st.columns(len(columns))
+    for index, (label, column, digits) in enumerate(columns):
+        with row[index]:
+            st.metric(label, fmt(pool_value(name, column), digits))
+
+
+if page == "Executive Overview":
+    st.subheader("Capacity and consumption")
+    show_pool_kpis("Enterprise", [
+        ("Enterprise quota (hours)", "Quota (Hrs)", 0),
+        ("Enterprise consumed (hours)", "Consumed (Hrs)", 1),
+        ("Enterprise balance (hours)", "Balance (Hrs)", 1),
+        ("Enterprise utilisation", "Utilisation (%)", 1),
+    ])
+    if pool_value("Searah", "Quota (Hrs)") is not None:
+        st.subheader("Dedicated Searah pool")
+        show_pool_kpis("Searah", [
+            ("Searah quota (hours)", "Quota (Hrs)", 0),
+            ("Searah consumed (hours)", "Consumed (Hrs)", 1),
+            ("Searah balance (hours)", "Balance (Hrs)", 1),
+            ("Searah utilisation", "Utilisation (%)", 1),
+        ])
+
+    left, right = st.columns([1.2, 1])
+    with left:
+        st.markdown("**Enterprise monthly normalised consumption**")
+        if not monthly.empty:
+            figure = px.bar(monthly, x="Month", y="Hours", color_discrete_sequence=["#087e8b"])
+            figure.update_layout(height=330, margin=dict(l=10, r=10, t=15, b=10), yaxis_title="Normalised hours", xaxis_title="")
+            st.plotly_chart(figure, use_container_width=True)
+        else:
+            st.info("No Enterprise monthly mart was published.")
+    with right:
+        st.markdown("**Department consumption**")
+        if not department_usage.empty:
+            figure = px.bar(
+                department_usage.sort_values("Hours"),
+                x="Hours", y="Department", orientation="h",
+                color_discrete_sequence=["#d19a36"],
+            )
+            figure.update_layout(height=330, margin=dict(l=10, r=10, t=15, b=10), xaxis_title="Normalised hours", yaxis_title="")
+            st.plotly_chart(figure, use_container_width=True)
+        else:
+            st.info("No department usage mart was published.")
+
+    st.info(
+        "Interpretation guardrail: daily unique VM users are not concurrency; VM duration is excluded; "
+        "profile events are not purchased licence inventory; storage is not estimated from screenshots."
+    )
+
+elif page == "Simulation Hours":
+    st.subheader("Enterprise simulation ledger")
+    st.caption("Normalised hours are calculated by the approved, effective-dated conversion-rule version.")
+    if not monthly.empty:
+        st.plotly_chart(
+            px.line(monthly, x="Month", y="Hours", markers=True, color_discrete_sequence=["#087e8b"]),
+            use_container_width=True,
+        )
+    if not department_monthly.empty:
+        departments = sorted(department_monthly["Department"].dropna().astype(str).unique())
+        selected = st.multiselect("Department filter", departments, default=departments)
+        filtered = department_monthly[department_monthly["Department"].astype(str).isin(selected)]
+        if not filtered.empty:
+            chart = px.bar(
+                filtered, x="Month", y="Hours", color="Department", barmode="stack",
+                title="Monthly departmental normalised hours",
+            )
+            chart.update_layout(height=380, yaxis_title="Normalised hours", xaxis_title="")
+            st.plotly_chart(chart, use_container_width=True)
+    if not department_ledger.empty:
+        st.markdown("**Department quota, consumption and balance**")
+        preferred = [
+            "Department", "Quota (Hrs)", "Consumed (Hrs)", "Adjustment (Hrs)",
+            "Consumed (Hrs) Final", "Balance (Hrs)", "Utilisation (%)", "Policy Status",
+        ]
+        visible = [column for column in preferred if column in department_ledger.columns]
+        st.dataframe(department_ledger[visible], use_container_width=True, hide_index=True)
+    if not searah_monthly.empty:
+        st.subheader("Searah dedicated pool, shown separately")
+        st.plotly_chart(
+            px.bar(searah_monthly, x="Month", y="Hours", color_discrete_sequence=["#d19a36"]),
+            use_container_width=True,
+        )
+    st.caption("User-level extracts are retained in the local marts for authorised processing, not exposed in this unauthenticated prototype.")
+
+elif page == "VM Activity":
+    st.subheader("Daily VM activity")
+    st.caption("Daily distinct users are an activity proxy. They do not measure simultaneous sessions or the 220-profile cap.")
+    if vm_monthly.empty:
+        st.warning("No VM activity mart was published for this source period.")
     else:
-        dep=sorted(vm["Department_"].dropna().astype(str).unique()) if "Department_" in vm else []
-        chosen=st.multiselect("Department",dep,default=dep)
-        v=vm[vm["Department_"].astype(str).isin(chosen)] if chosen else vm
-        daily=v.groupby("Date").agg(**{"Active users":("User","nunique")}).reset_index()
-        c1,c2,c3=st.columns(3)
-        with c1: kpi("VM users",fmt(v["User"].nunique()),"Distinct users in selected scope")
-        with c2: kpi("Activity records",fmt(len(v)),"User-day records")
-        with c3: kpi("Peak daily unique users",fmt(daily["Active users"].max() if not daily.empty else 0),"Not a concurrency measurement")
-        fig=px.line(daily,x="Date",y="Active users",markers=True,color_discrete_sequence=["#315a9b"])
-        fig.update_layout(height=350,yaxis_title="Distinct users per day",xaxis_title="",margin=dict(l=10,r=10,t=20,b=10))
-        st.plotly_chart(fig,use_container_width=True)
-        c1,c2=st.columns(2)
-        with c1:
-            by_department=department_vm(v)
-            fig=px.bar(by_department.head(12).sort_values("Active Users"),x="Active Users",y="Department",orientation="h",color_discrete_sequence=["#315a9b"])
-            fig.update_layout(height=360,yaxis_title="",xaxis_title="Distinct users")
-            st.plotly_chart(fig,use_container_width=True)
-        with c2:
-            user_days=v.groupby("User")["Date"].nunique().sort_values(ascending=False).head(15).reset_index(name="Active days")
-            fig=px.bar(user_days.sort_values("Active days"),x="Active days",y="User",orientation="h",color_discrete_sequence=["#e0a52b"])
-            fig.update_layout(height=360,yaxis_title="",xaxis_title="Days with recorded activity")
-            st.plotly_chart(fig,use_container_width=True)
-        st.dataframe(daily.sort_values("Date",ascending=False),use_container_width=True,hide_index=True)
+        st.plotly_chart(
+            px.line(vm_monthly, x="Month", y="Active Users", markers=True, color_discrete_sequence=["#315a9b"]),
+            use_container_width=True,
+        )
+    if not vm_department.empty:
+        st.dataframe(vm_department, use_container_width=True, hide_index=True)
+    st.info("Session-level concurrency and session hygiene require SLB session start/end telemetry. The unreliable duration field is excluded.")
 
-elif page=="Access & Rejections":
-    st.markdown("## Access and rejected sessions")
-    st.caption("Rejected-session counts can help reveal access friction, but the supplied date fields need reconciliation before time-series analysis.")
-    rejected=data["rejected"]
+elif page == "Access & Rejections":
+    st.subheader("Rejected session events")
+    rejected = data.get("rejected", pd.DataFrame())
     if rejected.empty:
-        st.warning("No rejected-session records were loaded.")
+        st.warning("No rejected-session fact mart was published.")
     else:
-        c1,c2,c3=st.columns(3)
-        with c1: kpi("Rejected records",fmt(len(rejected)),"Rows in rejected users data")
-        with c2: kpi("Affected users",fmt(rejected["User"].nunique()),"Distinct user accounts")
-        with c3: kpi("Departments",fmt(rejected["Department_"].nunique()),"Mapped department labels")
-        st.warning("The rejected-session sheet has misaligned date/session headers. This page intentionally avoids monthly or daily trend claims until the source mapping is verified.")
-        if "Department_" in rejected:
-            rd=rejected.groupby("Department_",dropna=False)["count"].sum().reset_index(name="Rejected records").sort_values("Rejected records",ascending=False)
-            fig=px.bar(rd.head(15).sort_values("Rejected records"),x="Rejected records",y="Department_",orientation="h",color_discrete_sequence=["#d18a32"])
-            fig.update_layout(height=380,yaxis_title="",xaxis_title="Rejected records")
-            st.plotly_chart(fig,use_container_width=True)
-        top_rej=rejected.groupby("User")["count"].sum().sort_values(ascending=False).head(25).reset_index(name="Rejected records")
-        st.subheader("Users with the most rejected records")
-        st.dataframe(top_rej,use_container_width=True,hide_index=True)
-        st.caption("User-level information is identifiable. Keep this view within approved company access controls.")
+        total = pd.to_numeric(rejected.get("count", pd.Series(dtype=float)), errors="coerce").sum()
+        users = rejected["User"].nunique() if "User" in rejected.columns else 0
+        col1, col2 = st.columns(2)
+        col1.metric("Rejected event count", fmt(total))
+        col2.metric("Affected users", fmt(users))
+    if not rejection_summary.empty:
+        st.dataframe(rejection_summary, use_container_width=True, hide_index=True)
+    st.caption("Counts are event-level signals. Do not interpret them as unique sessions when source session IDs are absent.")
 
-elif page=="Storage & Capacity":
-    st.markdown("## Storage and capacity")
-    st.caption("Storage is a key part of DELFI utilisation, but the supplied workbook does not contain readable storage measurements.")
-    st.warning("Storage analytics are not populated because the Storage worksheet contains section headings only, without usable tabular values.")
-    st.markdown("""
-**Data needed to activate this page**
-- Tenant / environment
-- Folder or storage domain
-- Department or owning team
-- Used capacity (GB or TB)
-- Allocated capacity / quota
-- Snapshot or reporting date
-- Optional: last modified date and owner
-
-Once those fields are available, this page can show capacity consumption, department share, largest folders, growth over time, and potential cleanup opportunities.
-""")
-    st.info("No storage consumption percentage or capacity KPI is estimated from the current file.")
-
-elif page=="Profiles & Access":
-    st.markdown("## Profiles and access")
-    st.caption("Profile records represent observed profile activity in the source extract. They are not necessarily a complete inventory of purchased licences.")
-    if profiles.empty:
-        st.warning("No profile activity dataset was loaded.")
+elif page == "Profiles & Access":
+    st.subheader("Observed profile activity")
+    st.caption("This is usage activity, not purchased licence inventory or a complete concurrency measurement.")
+    if profile_ledger.empty:
+        st.warning("No profile activity mart was published.")
     else:
-        c1,c2,c3=st.columns(3)
-        with c1: kpi("Profile events",fmt(len(profiles)),"Rows in Data_profiles")
-        with c2: kpi("Observed users",fmt(profiles["User"].nunique()),"Distinct users")
-        with c3:
-            dates=profiles["Date"].dropna()
-            kpi("Date coverage",f"{dates.min():%b %Y}" if len(dates) else "Unknown",f"Through {dates.max():%b %Y}" if len(dates) else "No valid dates")
-        ps=profile_summary(profiles)
-        fig=px.bar(ps.head(15).sort_values("Events"),x="Events",y="Profile",orientation="h",color_discrete_sequence=["#078b91"])
-        fig.update_layout(height=480,yaxis_title="",xaxis_title="Observed profile events")
-        st.plotly_chart(fig,use_container_width=True)
-        st.subheader("Profile detail")
-        st.dataframe(ps,use_container_width=True,hide_index=True)
-        if not data["users"].empty:
-            st.subheader("User reference list")
-            st.caption("Contains work email addresses. Keep this dashboard and its source files within approved company storage.")
-            st.dataframe(data["users"].head(100),use_container_width=True,hide_index=True)
+        st.dataframe(profile_ledger, use_container_width=True, hide_index=True)
+
+elif page == "Storage & Capacity":
+    st.subheader("Storage data readiness")
+    st.warning("No structured storage export is available in the source workbook. Storage utilisation, ownership and growth are not published.")
+    st.markdown(
+        "A structured feed needs tenant, folder or storage domain, owner, department, used capacity, "
+        "quota and snapshot date. Image-only charts are not used to manufacture precise storage KPIs."
+    )
 
 else:
-    st.markdown("## Data quality and interpretation notes")
-    st.write("The dashboard deliberately exposes source limitations rather than silently filling gaps or inventing metrics.")
-    st.dataframe(pd.DataFrame(data_quality(data)),use_container_width=True,hide_index=True)
-    st.markdown("""
-**Known limitations to validate before management reporting**
-- The workbook's `2026 Package Info` and `Domain Profiles` sheets are empty in the supplied file.
-- The `Storage` sheet contains section labels but no readable tabular storage values. Storage KPIs and charts are therefore intentionally not fabricated.
-- `Data_profiles` appears to have a limited date window in this extract. Confirm whether it is a snapshot or a complete activity history.
-- The rejected-session detail sheet has a header/data alignment issue in its date-related columns. Treat counts as provisional and do not trend by date until reconciled.
-- Simulation consumption uses `Hours per User` for normalised aggregation. Confirm the unit conversion logic with the DELFI platform owner.
-- User-level fields include corporate email addresses. Do not commit the source workbook or identifiable exports to a public GitHub repository.
-""")
-    st.subheader("Loaded dataset sizes")
-    st.json({k:len(data[k]) for k in ["sim","searah","vm","profiles","top","rejected","users","allocation","user_monthly"]})
+    st.subheader("Data quality and reconciliation")
+    quality = pd.DataFrame(data_quality(data))
+    st.dataframe(quality, use_container_width=True, hide_index=True)
+    st.markdown("**Reconciliation controls for this published period**")
+    if reconciliation.empty:
+        st.error("The published manifest contains no reconciliation rows.")
+    else:
+        failed = reconciliation[~reconciliation["Status"].isin(["PASS", "NOT APPLICABLE"])]
+        if failed.empty:
+            st.success("All mandatory controls passed.")
+        else:
+            st.error(f"{len(failed)} control(s) require attention.")
+        st.dataframe(reconciliation, use_container_width=True, hide_index=True)
+    st.markdown("**Lineage**")
+    st.code(
+        f"Source: {data.get('source_file')}\n"
+        f"SHA-256: {data.get('source_sha256')}\n"
+        f"Policy: {build.get('policy_version')}\n"
+        f"Build: {build.get('build_id')}",
+        language="text",
+    )
 
 st.divider()
-st.caption("DELFI Utilisation Intelligence • Prototype • Validate source definitions before using figures for charging, procurement or contractual decisions.")
+st.caption(
+    "DELFI Utilisation Intelligence · Streamlit · Published Parquet marts · "
+    "Use only after source controls and approvals pass."
+)
