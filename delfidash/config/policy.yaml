@@ -4,6 +4,8 @@ policy_version: 2026-proposed-1
 status: proposed
 source_reference: "Delfi PTS Utilization Accountability Dashboard Architecture Proposal, 30 Oct 2026"
 period: 2026
+reconciliation:
+  numeric_tolerance_hours: 0.1
 approval:
   approved_by:
   approved_role:
