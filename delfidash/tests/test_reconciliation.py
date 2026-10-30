@@ -37,7 +37,7 @@ def test_publish_gate_rejects_failed_reconciliation():
 def test_searah_is_not_added_to_enterprise_reconciliation():
     enterprise = pd.DataFrame({"User": ["a"], "Month": ["Jan'26"], "Hours per User": [100.0], "Updated Department": ["DPE"]})
     report = reconcile_allocations(allocation_frame(), enterprise, expected_enterprise_quota=200.0,
-                                   expected_enterprise_consumption=100.0)
+                                   expected_enterprise_consumption=100.0, tolerance=0.1)
     assert report.loc[report["Check"] == "Enterprise consumption control", "Actual"].iloc[0] == 100.0
 
 
@@ -46,7 +46,7 @@ def test_department_without_quota_is_marked_not_applicable_for_balance():
     allocation.loc[len(allocation)] = ["Vestigo", float("nan"), 0.0, 0.0, 0.0, float("nan")]
     usage = pd.DataFrame({"User": ["a", "b"], "Month": ["Jan'26", "Jan'26"],
                           "Hours per User": [60.0, 40.0], "Updated Department": ["DPE", "DGS"]})
-    report = reconcile_allocations(allocation, usage, expected_enterprise_quota=200.0)
+    report = reconcile_allocations(allocation, usage, expected_enterprise_quota=200.0, tolerance=0.1)
     vestigo = report[(report["Check"] == "Department balance arithmetic") & (report["Scope"] == "Vestigo")]
     assert vestigo.iloc[0]["Status"] == "NOT APPLICABLE"
 
@@ -58,7 +58,7 @@ def test_publish_gate_accepts_explicit_not_applicable_checks():
 def test_usage_department_without_allocation_is_detected():
     usage = pd.DataFrame({"User": ["a", "x"], "Month": ["Jan'26", "Jan'26"],
                           "Hours per User": [60.0, 12.0], "Updated Department": ["DPE", "Unknown"]})
-    report = reconcile_allocations(allocation_frame(), usage, expected_enterprise_quota=200.0)
+    report = reconcile_allocations(allocation_frame(), usage, expected_enterprise_quota=200.0, tolerance=0.1)
     unmatched = report[report["Check"] == "Unallocated department usage"]
     assert unmatched.iloc[0]["Status"] == "FAIL"
     assert unmatched.iloc[0]["Actual"] == 12.0
