@@ -18,13 +18,13 @@ def test_allocation_reconciliation_passes_and_checks_arithmetic():
     usage = pd.DataFrame({"User": ["a", "b"], "Month": ["Jan'26", "Jan'26"],
                           "Hours per User": [60.0, 40.0], "Updated Department": ["DPE", "DGS"]})
     report = reconcile_allocations(allocation_frame(), usage, expected_enterprise_quota=200.0,
-                                   expected_enterprise_consumption=100.0)
+                                   expected_enterprise_consumption=100.0, tolerance=0.1)
     assert report["Status"].eq("PASS").all()
 
 
 def test_allocation_reconciliation_detects_department_mismatch():
     usage = pd.DataFrame({"User": ["a"], "Month": ["Jan'26"], "Hours per User": [59.0], "Updated Department": ["DPE"]})
-    report = reconcile_allocations(allocation_frame(), usage, expected_enterprise_quota=200.0)
+    report = reconcile_allocations(allocation_frame(), usage, expected_enterprise_quota=200.0, tolerance=0.1)
     mismatch = report[(report["Check"] == "Department usage tie-out") & (report["Scope"] == "DPE")]
     assert mismatch.iloc[0]["Status"] == "FAIL"
 
