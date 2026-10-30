@@ -45,8 +45,12 @@ def test_proposed_policy_quarantines_period_without_publishing(approved_build_in
 
 def test_conversion_mismatch_blocks_publication(approved_build_inputs, tmp_path):
     inputs = approved_build_inputs
-    from conftest import create_source_workbook
-    altered_source = create_source_workbook(tmp_path / "altered.xlsx", normalized_hours=9.0)
+    from openpyxl import load_workbook as load_xlsx_workbook
+    altered_source = tmp_path / "altered.xlsx"
+    workbook = load_xlsx_workbook(inputs["source"])
+    workbook["Data_sim hrs"]["D2"] = 9.0
+    workbook.save(altered_source)
+    workbook.close()
     with pytest.raises(BuildBlockedError, match="no published mart"):
         build_period(altered_source, policy_path=inputs["policy"],
                      rules_path=inputs["rules"], output_root=tmp_path / "mismatch-output")
